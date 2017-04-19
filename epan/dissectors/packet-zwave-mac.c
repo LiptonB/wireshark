@@ -128,7 +128,7 @@ dissect_zwave_mac (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	}	
 
 	if(zwave_app_handle == NULL){
-		//zwave_app_handle = find_dissector("zwave_app");
+		zwave_app_handle = find_dissector("zwave_app");
 	}
 
 	col_set_str (pinfo->cinfo, COL_PROTOCOL, "Zwave");
@@ -219,7 +219,8 @@ dissect_zwave_mac (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	}else if(routed > 0){
 		call_dissector(zwave_net_handle, next_tvb, pinfo, tree);
 	}else{
-		call_dissector(data_handle, next_tvb, pinfo, tree);
+		//call_dissector(data_handle, next_tvb, pinfo, tree);
+		call_dissector(zwave_app_handle, next_tvb, pinfo, tree);
 	}
 	//call_dissector(data_handle, next_tvb, pinfo, tree);
 	
