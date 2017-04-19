@@ -27,6 +27,7 @@
  */
 
 #include "config.h"
+#include <epan/exceptions.h>
 #include <epan/packet.h>
 #include "packet-afit-encapse.h"
 
@@ -146,18 +147,23 @@ dissect_zwave_mac (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		return;
 	}
 
-	//Checksum
-	checksum = tvb_get_guint8 (tvb, len-1);
-	checksum_calc = calc_checksum_tvb(tvb, 0, len);
-	// if (checksum_calc != checksum)
-	// 	{
-	// 			checksum_passed = 0x00;
-	// 			col_append_str(pinfo->cinfo, COL_INFO, " [CHKSM ERR]");
-	// 			call_dissector(data_handle, tvb, pinfo, tree);
-	// 			return;
-	// 	}
-	
-	checksum_passed = (checksum_calc == checksum);
+  TRY {
+    //Checksum
+    checksum = tvb_get_guint8 (tvb, len-1);
+    checksum_calc = calc_checksum_tvb(tvb, 0, len);
+    // if (checksum_calc != checksum)
+    // 	{
+    // 			checksum_passed = 0x00;
+    // 			col_append_str(pinfo->cinfo, COL_INFO, " [CHKSM ERR]");
+    // 			call_dissector(data_handle, tvb, pinfo, tree);
+    // 			return;
+    // 	}
+    checksum_passed = (checksum_calc == checksum);
+  }
+	CATCH_BOUNDS_AND_DISSECTOR_ERRORS {
+    checksum_passed = 0;
+  }
+  ENDTRY;
 	
 	if (tree)
 	{
