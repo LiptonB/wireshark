@@ -149,15 +149,15 @@ dissect_zwave_mac (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	//Checksum
 	checksum = tvb_get_guint8 (tvb, len-1);
 	checksum_calc = calc_checksum_tvb(tvb, 0, len);
-	if (checksum_calc != checksum)
-		{
-				checksum_passed = 0x00;
-				col_append_str(pinfo->cinfo, COL_INFO, " [CHKSM ERR]");
-				call_dissector(data_handle, tvb, pinfo, tree);
-				return;
-		}
+	// if (checksum_calc != checksum)
+	// 	{
+	// 			checksum_passed = 0x00;
+	// 			col_append_str(pinfo->cinfo, COL_INFO, " [CHKSM ERR]");
+	// 			call_dissector(data_handle, tvb, pinfo, tree);
+	// 			return;
+	// 	}
 	
-	checksum_passed = 0x01;
+	checksum_passed = (checksum_calc == checksum);
 	
 	if (tree)
 	{
