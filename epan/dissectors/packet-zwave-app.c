@@ -14,7 +14,7 @@ static int hf_zwave_app_nl = -1;
 static int hf_zwave_app_nl_len = -1;
 
 static gint ett_zwave_app = -1;
-static dissector_handle_t data_handle;
+static dissector_handle_t data_handle == NULL;
 
 #define ZWAVE_APP_NETWORK_CONFIG_REQ 0x02
 #define ZWAVE_APP_NETWORK_CONT_NL 0x04
@@ -116,7 +116,7 @@ dissect_zwave_app_nl_update(tvbuff_t *tvb, proto_tree *tree, guint offset){
 	guint8 nl_len = -1;
 	guint8* nl = NULL;
 	guint8* bytes = NULL;
-	gint i;
+	gint i,j;
 	
 	proto_tree* zwave_app_nl_tree = NULL;
 	guint8 nodeId, current, mask;
@@ -203,7 +203,7 @@ dissect_zwave_app(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	//proto_tree* zwave_app_tree = NULL;
 
-	if(data_handle <= 0){
+	if(data_handle == NULL){
 		data_handle = find_dissector("data");
 	}
 	
