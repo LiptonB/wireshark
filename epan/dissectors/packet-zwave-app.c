@@ -12,8 +12,14 @@ static int hf_zwave_app_rt_dest = -1;
 static int hf_zwave_app_rt_status = -1;
 static int hf_zwave_app_nl = -1;
 static int hf_zwave_app_nl_len = -1;
-static int hf_zwave_app_basic_type = -1;
+static int hf_zwave_app_basic_cmd = -1;
 static int hf_zwave_app_basic_value = -1;
+static int hf_zwave_app_alarm_cmd = -1;
+static int hf_zwave_app_alarm_type = -1;
+static int hf_zwave_app_alarm_level = -1;
+static int hf_zwave_app_sm_cmd = -1;
+static int hf_zwave_app_sm_type = -1;
+static int hf_zwave_app_sm_value = -1;
 
 static gint ett_zwave_app = -1;
 static dissector_handle_t data_handle = NULL;
@@ -27,6 +33,22 @@ static dissector_handle_t data_handle = NULL;
 #define BASIC_GET 0x02
 #define BASIC_REPORT 0x03
 #define BASIC_SET 0x01
+
+#define ALARM_GET 0x04
+#define ALARM_REPORT 0x05
+
+/* Sensor Multilevel command class commands */
+#define SENSOR_MULTILEVEL_GET                                                            0x04
+#define SENSOR_MULTILEVEL_REPORT                                                         0x05
+/* Values used for Sensor Multilevel Report command */
+#define SENSOR_MULTILEVEL_REPORT_TEMPERATURE_VERSION_1                                   0x01
+#define SENSOR_MULTILEVEL_REPORT_GENERAL_PURPOSE_VALUE_VERSION_1                         0x02
+#define SENSOR_MULTILEVEL_REPORT_LUMINANCE_VERSION_1                                     0x03
+#define SENSOR_MULTILEVEL_REPORT_LEVEL_SIZE_MASK                                         0x07
+#define SENSOR_MULTILEVEL_REPORT_LEVEL_SCALE_MASK                                        0x18
+#define SENSOR_MULTILEVEL_REPORT_LEVEL_SCALE_SHIFT                                       0x03
+#define SENSOR_MULTILEVEL_REPORT_LEVEL_PRECISION_MASK                                    0xE0
+#define SENSOR_MULTILEVEL_REPORT_LEVEL_PRECISION_SHIFT                                   0x05
 
 static const value_string zwave_app_net_types[] = {
 	{	 ZWAVE_APP_NETWORK_CONFIG_REQ 		,	"Controller Config Request"	 },
@@ -42,12 +64,21 @@ static const value_string zwave_app_route_statuses[] = {
 	{	0x10	,	"Valid Route Entry"}
 };
 
-static const value_string zwave_app_basic_types[] = {
+static const value_string zwave_app_basic_cmds[] = {
   { BASIC_SET, "Set" },
   { BASIC_GET, "Get" },
   { BASIC_REPORT, "Report" },
 };
 
+static const value_string zwave_app_alarm_cmds[] = {
+  { ALARM_GET, "Get" },
+  { ALARM_REPORT, "Report" },
+};
+
+static const value_string zwave_app_sm_cmds[] = {
+  { SENSOR_MULTILEVEL_GET, "Get" },
+  { SENSOR_MULTILEVEL_REPORT, "Report" },
+};
 
 static const value_string zwave_app_cmd_classes[] = {
 	{	 0x00	,	"Hello / NOOP"	 },
@@ -210,6 +241,7 @@ dissect_zwave_app(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	guint8 strbuf[256];
 	guint cmd_type = -1;
 	guint msg_type = -1;
+  guint msg_size = -1;
 	//guint nl_len = -1;
 	//guint rt_len = -1;
 
@@ -223,7 +255,7 @@ dissect_zwave_app(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	if(tree){
 
-		ti = proto_tree_add_item (tree, proto_zwave_app, tvb, 0, -1, ENC_NA);
+		ti = proto_tree_add_item (tree, proto_zwave_app, tvb, 0, tvb_captured_length_remaining(tvb,0)-1, ENC_NA);
 
 		cmd_type = tvb_get_guint8 (tvb, 0);
 		snprintf(strbuf,255," | APP: %s", val_to_str(cmd_type, zwave_app_cmd_classes, "Unknown (0x%02x)"));
@@ -255,19 +287,48 @@ dissect_zwave_app(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			}
 		} else if(cmd_type == 0x20) {
 			msg_type = tvb_get_guint8 (tvb,1);
-			snprintf(strbuf,255,": %s", val_to_str(msg_type, zwave_app_basic_types, "Unknown (0x%02x)"));
-			col_append_str(pinfo->cinfo,COL_INFO,strbuf);
-			proto_item_append_text (ti, " basic_command=%s", val_to_str(msg_type, zwave_app_basic_types, "Unknown (0x%02x)"));
+			// snprintf(strbuf,255,": %s", val_to_str(msg_type, zwave_app_basic_cmds, "Unknown (0x%02x)"));
+			// col_append_str(pinfo->cinfo,COL_INFO,strbuf);
+			// proto_item_append_text (ti, " basic_command=%s", val_to_str(msg_type, zwave_app_basic_cmds, "Unknown (0x%02x)"));
 
-      proto_tree_add_item(zwave_app_tree, hf_zwave_app_basic_type, tvb, offset, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_item(zwave_app_tree, hf_zwave_app_basic_cmd, tvb, offset, 1, ENC_BIG_ENDIAN);
       offset++;
 
       if (msg_type == BASIC_SET || msg_type == BASIC_REPORT) {
         proto_tree_add_item(zwave_app_tree, hf_zwave_app_basic_value, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset++;
+      }
+    } else if(cmd_type == 0x71) { // Alarm
+			msg_type = tvb_get_guint8 (tvb,1);
+      proto_tree_add_item(zwave_app_tree, hf_zwave_app_alarm_cmd, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+
+      if (msg_type == ALARM_GET || msg_type == ALARM_REPORT) {
+        proto_tree_add_item(zwave_app_tree, hf_zwave_app_alarm_type, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset++;
+      }
+      if (msg_type == ALARM_REPORT) {
+        proto_tree_add_item(zwave_app_tree, hf_zwave_app_alarm_level, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset++;
+      }
+    } else if(cmd_type == 0x31) { // Multilevel Sensor
+			msg_type = tvb_get_guint8 (tvb,1);
+      proto_tree_add_item(zwave_app_tree, hf_zwave_app_sm_cmd, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+
+      if (msg_type == SENSOR_MULTILEVEL_REPORT) {
+        proto_tree_add_item(zwave_app_tree, hf_zwave_app_sm_type, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset++;
+        // precision, scale, size
+        msg_size = tvb_get_guint8(tvb, offset) & 0x07;
+
+        offset++;
+        proto_tree_add_item(zwave_app_tree, hf_zwave_app_sm_value, tvb, offset, msg_size, ENC_BIG_ENDIAN);
+        offset += msg_size;
       }
     }
 
-		next_tvb = tvb_new_subset(tvb, offset, tvb_captured_length_remaining(tvb,offset), tvb_reported_length(tvb));
+		next_tvb = tvb_new_subset(tvb, offset, tvb_captured_length_remaining(tvb,offset)-1, tvb_reported_length(tvb));
 		
 		call_dissector(data_handle, next_tvb, pinfo, tree);
 
@@ -322,16 +383,58 @@ proto_register_zwave_app (void)
 			}
 		},
 
-    { &hf_zwave_app_basic_type,
+    { &hf_zwave_app_basic_cmd,
       {
-        "Basic Type", "zwave_app.basic.type",
-        FT_UINT8, BASE_HEX, VALS(zwave_app_basic_types), 0x0, NULL, HFILL
+        "Basic Command", "zwave_app.basic.cmd",
+        FT_UINT8, BASE_HEX, VALS(zwave_app_basic_cmds), 0x0, NULL, HFILL
       }
     },
 
     { &hf_zwave_app_basic_value,
       {
         "Value", "zwave_app.basic.value",
+        FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_alarm_cmd,
+      {
+        "Alarm Command", "zwave_app.alarm.cmd",
+        FT_UINT8, BASE_HEX, VALS(zwave_app_alarm_cmds), 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_alarm_type,
+      {
+        "Alarm Type", "zwave_app.alarm.type",
+        FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_alarm_level,
+      {
+        "Alarm Level", "zwave_app.alarm.level",
+        FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_sm_cmd,
+      {
+        "Multilevel Sensor Command", "zwave_app.sm.cmd",
+        FT_UINT8, BASE_HEX, VALS(zwave_app_sm_cmds), 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_sm_type,
+      {
+        "Sensor Type", "zwave_app.sm.type",
+        FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_sm_value,
+      {
+        "Sensor Value", "zwave_app.sm.value",
         FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL
       }
     },
