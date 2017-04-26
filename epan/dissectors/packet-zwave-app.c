@@ -12,15 +12,21 @@ static int hf_zwave_app_rt_dest = -1;
 static int hf_zwave_app_rt_status = -1;
 static int hf_zwave_app_nl = -1;
 static int hf_zwave_app_nl_len = -1;
+static int hf_zwave_app_basic_type = -1;
+static int hf_zwave_app_basic_value = -1;
 
 static gint ett_zwave_app = -1;
-static dissector_handle_t data_handle == NULL;
+static dissector_handle_t data_handle = NULL;
 
 #define ZWAVE_APP_NETWORK_CONFIG_REQ 0x02
 #define ZWAVE_APP_NETWORK_CONT_NL 0x04
 #define ZWAVE_APP_NETWORK_DEV_NL 0x06
 #define ZWAVE_APP_NETWORK_REV_RT 0x0C
 #define ZWAVE_APP_NETWORK_NL_RT 0x14
+
+#define BASIC_GET 0x02
+#define BASIC_REPORT 0x03
+#define BASIC_SET 0x01
 
 static const value_string zwave_app_net_types[] = {
 	{	 ZWAVE_APP_NETWORK_CONFIG_REQ 		,	"Controller Config Request"	 },
@@ -34,6 +40,12 @@ static const value_string zwave_app_net_types[] = {
 static const value_string zwave_app_route_statuses[] = {
 	{	0x08	,	"Empty Route Entry"},
 	{	0x10	,	"Valid Route Entry"}
+};
+
+static const value_string zwave_app_basic_types[] = {
+  { BASIC_SET, "Set" },
+  { BASIC_GET, "Get" },
+  { BASIC_REPORT, "Report" },
 };
 
 
@@ -93,22 +105,22 @@ static const value_string zwave_app_cmd_classes[] = {
 #define ZWAVE_APP_NET_NL_STRLEN (2*232 + 1)
 #define ZWAVE_APP_NET_BIN_STRLEN (8*2+1)
 
-static guint8* getBinary8(guint8 data){
-	static guint8 result[ZWAVE_APP_NET_BIN_STRLEN];
-	gint i;
-	guint8 mask = 0x80;
-	memset(result, 0, ZWAVE_APP_NET_BIN_STRLEN);
-	
-	snprintf(result, ZWAVE_APP_NET_BIN_STRLEN, "%u,", ((data & mask) >> 7));
-
-	for(i=6; i >= 0;i--){
-		mask = mask >> 1;
-	
-		snprintf(result, ZWAVE_APP_NET_BIN_STRLEN, "%s,%u", result, ((data & mask) >> i));
-	}
-
-	return result;
-}
+// static guint8* getBinary8(guint8 data){
+// 	static guint8 result[ZWAVE_APP_NET_BIN_STRLEN];
+// 	gint i;
+// 	guint8 mask = 0x80;
+// 	memset(result, 0, ZWAVE_APP_NET_BIN_STRLEN);
+// 	
+// 	snprintf(result, ZWAVE_APP_NET_BIN_STRLEN, "%u,", ((data & mask) >> 7));
+// 
+// 	for(i=6; i >= 0;i--){
+// 		mask = mask >> 1;
+// 	
+// 		snprintf(result, ZWAVE_APP_NET_BIN_STRLEN, "%s,%u", result, ((data & mask) >> i));
+// 	}
+// 
+// 	return result;
+// }
 
 guint
 dissect_zwave_app_nl_update(tvbuff_t *tvb, proto_tree *tree, guint offset){
@@ -119,7 +131,7 @@ dissect_zwave_app_nl_update(tvbuff_t *tvb, proto_tree *tree, guint offset){
 	gint i,j;
 	
 	proto_tree* zwave_app_nl_tree = NULL;
-	guint8 nodeId, current, mask;
+	guint8 nodeId, mask;
 
 	nl = (guint8*)calloc(sizeof(guint8),ZWAVE_APP_NET_NL_STRLEN);
 	memset(nl,0,ZWAVE_APP_NET_NL_STRLEN);
@@ -241,7 +253,19 @@ dissect_zwave_app(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			}else if((msg_type == ZWAVE_APP_NETWORK_REV_RT) || (msg_type == ZWAVE_APP_NETWORK_NL_RT)){
 				offset = dissect_zwave_app_route_assignment(ti, tvb, pinfo, zwave_app_tree, offset);
 			}
-		}
+		} else if(cmd_type == 0x20) {
+			msg_type = tvb_get_guint8 (tvb,1);
+			snprintf(strbuf,255,": %s", val_to_str(msg_type, zwave_app_basic_types, "Unknown (0x%02x)"));
+			col_append_str(pinfo->cinfo,COL_INFO,strbuf);
+			proto_item_append_text (ti, " basic_command=%s", val_to_str(msg_type, zwave_app_basic_types, "Unknown (0x%02x)"));
+
+      proto_tree_add_item(zwave_app_tree, hf_zwave_app_basic_type, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+
+      if (msg_type == BASIC_SET || msg_type == BASIC_REPORT) {
+        proto_tree_add_item(zwave_app_tree, hf_zwave_app_basic_value, tvb, offset, 1, ENC_BIG_ENDIAN);
+      }
+    }
 
 		next_tvb = tvb_new_subset(tvb, offset, tvb_captured_length_remaining(tvb,offset), tvb_reported_length(tvb));
 		
@@ -296,7 +320,21 @@ proto_register_zwave_app (void)
 				"Route Status", "zwave_app.net.rt.status",
 				FT_UINT8, BASE_HEX, VALS(zwave_app_route_statuses), 0x0, NULL, HFILL
 			}
-		}
+		},
+
+    { &hf_zwave_app_basic_type,
+      {
+        "Basic Type", "zwave_app.basic.type",
+        FT_UINT8, BASE_HEX, VALS(zwave_app_basic_types), 0x0, NULL, HFILL
+      }
+    },
+
+    { &hf_zwave_app_basic_value,
+      {
+        "Value", "zwave_app.basic.value",
+        FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL
+      }
+    },
 	};
 
 	static gint *ett[] = {
